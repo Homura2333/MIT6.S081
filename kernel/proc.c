@@ -275,6 +275,8 @@ fork(void)
   }
   np->sz = p->sz;
 
+  np->trace_num = p->trace_num;
+
   np->parent = p;
 
   // copy saved user registers.
@@ -692,4 +694,18 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+
+int num_proc(void)
+{
+  uint64 num = 0;
+  struct proc *p;
+  for (p = proc;p<&proc[NPROC];p++){
+    acquire(&p->lock);  //为什么这里一定要加锁，而上一个函数不用呢？
+    if (p->state != UNUSED)
+      num++;
+    release(&p->lock);
+  }
+  return num;
 }
