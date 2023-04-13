@@ -82,7 +82,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
-      *pte = PA2PTE(pagetable) | PTE_V;
+      *pte = PA2PTE(pagetable) | PTE_V;  //why this statement
     }
   }
   return &pagetable[PX(0, va)];
@@ -288,6 +288,31 @@ freewalk(pagetable_t pagetable)
   }
   kfree((void*)pagetable);
 }
+
+void vmprint_dfs(pagetable_t pagetable, int depth){
+  for (int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      for (int i = 0;i<depth;i++)
+        printf(".. ");
+      printf("..");
+      printf("%d: pte %p ",i,pte);
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      printf("pa %p\n",child);
+      if ((pte & (PTE_R|PTE_W|PTE_X)) == 0) //not leaf
+        vmprint_dfs((pagetable_t)child,depth+1);
+    } 
+  }
+}
+
+void
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n",pagetable);
+  vmprint_dfs(pagetable, 0);
+}
+
 
 // Free user memory pages,
 // then free page-table pages.
