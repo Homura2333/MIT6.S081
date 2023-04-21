@@ -121,6 +121,15 @@ found:
     return 0;
   }
 
+  //A kernel page table per process
+  // p->kernel_pagetable = pkvminit();
+  // if (p->kernel_pagetable == 0){
+  //   printf("gagagagagagagagagaga");
+  //   freeproc(p);
+  //   release(&p->lock);
+  //   return 0;
+  // }
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
