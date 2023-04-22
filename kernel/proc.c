@@ -19,6 +19,8 @@ extern void forkret(void);
 static void wakeup1(struct proc *chan);
 static void freeproc(struct proc *p);
 
+extern char etext[]; // kernel.ld sets this to end of kernel code.
+
 extern char trampoline[]; // trampoline.S
 
 // initialize the proc table at boot time.
@@ -122,13 +124,12 @@ found:
   }
 
   //A kernel page table per process
-  // p->kernel_pagetable = pkvminit();
-  // if (p->kernel_pagetable == 0){
-  //   printf("gagagagagagagagagaga");
-  //   freeproc(p);
-  //   release(&p->lock);
-  //   return 0;
-  // }
+  p->kernel_pagetable = pkvminit();
+  if (p->kernel_pagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -150,6 +151,8 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  if (p->kernel_pagetable)
+    proc_freekernelpagetable(p->kernel_pagetable);
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -202,6 +205,21 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
+}
+
+// Free a process's private kernel page table, and
+// free the physical memory it refers to
+void
+proc_freekernelpagetable(pagetable_t pagetable)
+{
+  uvmunmap(pagetable, UART0, 1, 0);
+  uvmunmap(pagetable, VIRTIO0, 1, 0);
+  uvmunmap(pagetable, CLINT, PGROUNDUP(0x10000)/PGSIZE, 0);
+  uvmunmap(pagetable, PLIC, PGROUNDUP(0x400000)/PGSIZE, 0);
+  uvmunmap(pagetable, KERNBASE, PGROUNDUP((uint64)etext-KERNBASE)/PGSIZE, 0);
+  uvmunmap(pagetable, (uint64)etext, PGROUNDUP(PHYSTOP-(uint64)etext)/PGSIZE, 0);
+  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+  freewalk(pagetable);
 }
 
 // a user program that calls exec("/init")
