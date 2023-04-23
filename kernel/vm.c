@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -171,11 +173,17 @@ kvmpa(uint64 va)
   pte_t *pte;
   uint64 pa;
   
-  pte = walk(kernel_pagetable, va, 0);
+  //pte = walk(kernel_pagetable, va, 0); // original xv6
+  pagetable_t kpt = (pagetable_t)MAKE_PAGETABLE(r_satp());
+  // The following way is also possible
+  // struct proc *p = myproc();   // the current process
+  // pagetable_t kpt = (pagetable_t)(p->kernel_pagetable);
+  pte = walk(kpt, va, 0);
   if(pte == 0)
-    panic("kvmpa");
-  if((*pte & PTE_V) == 0)
-    panic("kvmpa");
+    panic("kvmpa, pte==0");
+  if((*pte & PTE_V) == 0){
+    panic("kvmpa, pte invalid");
+  }
   pa = PTE2PA(*pte);
   return pa+off;
 }

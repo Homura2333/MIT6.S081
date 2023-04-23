@@ -209,6 +209,8 @@ w_mtvec(uint64 x)
 
 #define MAKE_SATP(pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
 
+#define MAKE_PAGETABLE(satp) (((uint64)satp) << 12)
+
 // supervisor address translation and protection;
 // holds the address of the page table.
 static inline void 
