@@ -115,6 +115,10 @@ exec(char *path, char **argv)
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
+  ukvmunmap(p->kernel_pagetable, oldsz, 0);   // unmap old user mappings in kpt
+
+  if (ukvmmap(p->pagetable,p->kernel_pagetable, 0, p->sz) < 0)  // map new user mappings in kpt
+    goto bad;
 
   if (p->pid==1)
     vmprint(p->pagetable);

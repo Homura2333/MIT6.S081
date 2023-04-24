@@ -155,6 +155,7 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  ukvmunmap(p->kernel_pagetable, p->sz, 0);
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   uvmunmap(p->kernel_pagetable, p->kstack, 1, 1);
@@ -221,7 +222,7 @@ proc_freekernelpagetable(pagetable_t pagetable)
 {
   uvmunmap(pagetable, UART0, 1, 0);
   uvmunmap(pagetable, VIRTIO0, 1, 0);
-  uvmunmap(pagetable, CLINT, PGROUNDUP(0x10000)/PGSIZE, 0);
+  //uvmunmap(pagetable, CLINT, PGROUNDUP(0x10000)/PGSIZE, 0);
   uvmunmap(pagetable, PLIC, PGROUNDUP(0x400000)/PGSIZE, 0);
   uvmunmap(pagetable, KERNBASE, PGROUNDUP((uint64)etext-KERNBASE)/PGSIZE, 0);
   uvmunmap(pagetable, (uint64)etext, PGROUNDUP(PHYSTOP-(uint64)etext)/PGSIZE, 0);
@@ -254,6 +255,8 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+  if (ukvmmap(p->pagetable, p->kernel_pagetable, 0, p->sz)<0)
+    panic("userinit");
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -273,15 +276,18 @@ int
 growproc(int n)
 {
   uint sz;
+  uint backup_sz;
   struct proc *p = myproc();
 
   sz = p->sz;
+  backup_sz = sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0 || ukvmmap(p->pagetable,p->kernel_pagetable,backup_sz,backup_sz + n) < 0) {
       return -1;
     }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    ukvmunmap(p->kernel_pagetable, backup_sz, backup_sz +n);
   }
   p->sz = sz;
   return 0;
@@ -302,7 +308,7 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0 || ukvmmap(np->pagetable,np->kernel_pagetable, 0, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;

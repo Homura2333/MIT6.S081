@@ -33,7 +33,7 @@ kvminit()
   kvmmap(VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
   // CLINT
-  kvmmap(CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  //kvmmap(CLINT, CLINT, 0x10000, PTE_R | PTE_W);
 
   // PLIC
   kvmmap(PLIC, PLIC, 0x400000, PTE_R | PTE_W);
@@ -69,7 +69,7 @@ pkvminit()
   mappages(ret_pagetable, VIRTIO0, PGSIZE, VIRTIO0, PTE_R | PTE_W);
 
   // CLINT
-  mappages(ret_pagetable, CLINT, 0x10000, CLINT, PTE_R | PTE_W);
+  //mappages(ret_pagetable, CLINT, 0x10000, CLINT, PTE_R | PTE_W);
 
   // PLIC
   mappages(ret_pagetable, PLIC, 0x400000, PLIC, PTE_R | PTE_W);
@@ -407,6 +407,48 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return -1;
 }
 
+int
+ukvmmap(pagetable_t upt, pagetable_t kpt, uint64 startsz, uint64 endsz)
+{
+  if (endsz<startsz)
+    return 0;
+  if (endsz >= PLIC)
+    return -1;
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+
+  startsz = PGROUNDUP(startsz);
+  for (i = startsz; i<endsz; i+= PGSIZE){
+    if ((pte = walk(upt, i, 0)) == 0)
+      panic("ukvmcopy: pte should exist");
+    if((*pte & PTE_V) == 0)
+      panic("uvmcopy: page not present");
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if(mappages(kpt, i, PGSIZE, pa, (flags & ~PTE_U) | PTE_R | PTE_W) != 0){
+      //uvmunmap(kpt, 0, i / PGSIZE, 0);
+      ukvmunmap(kpt, i, startsz);
+      return -1;
+    }
+  }
+  return 0;
+}
+
+void
+ukvmunmap(pagetable_t kpt, uint64 oldsz, uint64 newsz)
+{
+  if (oldsz >= PLIC)
+    panic("ukvmunmap");
+  if (newsz >= oldsz)
+    return;
+  if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
+    int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
+    uvmunmap(kpt, PGROUNDUP(newsz), npages, 0);
+  }
+}
+
+
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
 void
@@ -451,23 +493,24 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
-  uint64 n, va0, pa0;
+  // uint64 n, va0, pa0;
 
-  while(len > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > len)
-      n = len;
-    memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+  // while(len > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > len)
+  //     n = len;
+  //   memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
-    len -= n;
-    dst += n;
-    srcva = va0 + PGSIZE;
-  }
-  return 0;
+  //   len -= n;
+  //   dst += n;
+  //   srcva = va0 + PGSIZE;
+  // }
+  // return 0;
+  return copyin_new(pagetable, dst, srcva, len);
 }
 
 // Copy a null-terminated string from user to kernel.
@@ -477,38 +520,39 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
-  uint64 n, va0, pa0;
-  int got_null = 0;
+  // uint64 n, va0, pa0;
+  // int got_null = 0;
 
-  while(got_null == 0 && max > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > max)
-      n = max;
+  // while(got_null == 0 && max > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > max)
+  //     n = max;
 
-    char *p = (char *) (pa0 + (srcva - va0));
-    while(n > 0){
-      if(*p == '\0'){
-        *dst = '\0';
-        got_null = 1;
-        break;
-      } else {
-        *dst = *p;
-      }
-      --n;
-      --max;
-      p++;
-      dst++;
-    }
+  //   char *p = (char *) (pa0 + (srcva - va0));
+  //   while(n > 0){
+  //     if(*p == '\0'){
+  //       *dst = '\0';
+  //       got_null = 1;
+  //       break;
+  //     } else {
+  //       *dst = *p;
+  //     }
+  //     --n;
+  //     --max;
+  //     p++;
+  //     dst++;
+  //   }
 
-    srcva = va0 + PGSIZE;
-  }
-  if(got_null){
-    return 0;
-  } else {
-    return -1;
-  }
+  //   srcva = va0 + PGSIZE;
+  // }
+  // if(got_null){
+  //   return 0;
+  // } else {
+  //   return -1;
+  // }
+  return copyinstr_new(pagetable,dst,srcva,max);
 }
